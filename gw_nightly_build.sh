@@ -12,7 +12,6 @@ usage() {
   echo
   echo "  -p <URL>         URL to global workflow repository (default: git@github.com:DavidHuber-NOAA/global-workflow)"
   echo "  -b <branch name> Git branch name (default: gfsv16b_port_2_s4)"
-  echo "  -c <script path> Specify a checkout script. If not specified the script in the global-workflow is used."
   echo "  -n <test name>   Name of the test (default: gw_nightly_build)"
   echo "  -h               Display this help"
   echo
@@ -25,6 +24,8 @@ if [ -f /etc/bashrc ]; then
    source /etc/profile
 fi
 
+module load git
+
 #set -x
 
 #Defined paths
@@ -34,7 +35,6 @@ export TEST_NAME="gw_nightly_build"
 #Set defaults
 export GITHUB_PATH="git@github.com:NOAA-EMC/global-workflow"
 export GW_BRANCH="develop"
-export SPECIFY_CHECKOUT="No"
 #Modify if specified
 while getopts ":p:b:" opt; do
    case $opt in
@@ -43,16 +43,6 @@ while getopts ":p:b:" opt; do
          ;;
       b)
          export GW_BRANCH=$OPTARG
-         ;;
-      c)
-         export CHECKOUT_SCRIPT=$OPTARG
-         if [[ -e $CHECKOUT_SCRIPT ]]; then
-            #Get the full path
-            export CHECKOUT_SCRIPT=`readlink -f $OPTARG`
-         else
-            die "File does not exist: $OPTARG"
-         fi
-         export SPECIFY_CHECKOUT="Yes"
          ;;
       n)
          export TEST_NAME=$OPTARG
@@ -96,7 +86,7 @@ EOF
 fi
 
 #Clone the repository
-git clone $GITHUB_PATH $GW_ROOT_PATH
+git clone $GITHUB_PATH $GW_ROOT_PATH --recursive -j 4
 if [[ $? -ne 0 ]]; then
    message="Failed to checkout $GITHUB_PATH to $GW_ROOT_PATH, aborting nightly build!"
    echo $message
@@ -112,14 +102,7 @@ fi
 #Checkout the branch
 cd $GW_ROOT_PATH
 git checkout $GW_BRANCH
-
-cd $SOURCE_DIR
-
-if [[ $SPECIFY_CHECKOUT = "Yes" ]]; then
-   cp $CHECKOUT_SCRIPT checkout.sh
-fi
-
-./checkout.sh -g 2>&1 | tee checkout.log
+git submodule update --init --recursive -j 4
 
 #Check for checkout errors
 ERR=$?
@@ -145,7 +128,7 @@ fi
 
 #Build the workflow
 cd $SOURCE_DIR
-timeout 10800 ./build_all.sh 2>&1 | tee build.log
+timeout 10800 ./build_all.sh -g 2>&1 | tee build.log
 
 #Check for errors
 ERR=$?
